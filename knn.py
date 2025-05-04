@@ -2,37 +2,35 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.neighbors import KNeighborsClassifier
-from sklearn.metrics import classification_report, accuracy_score
+from sklearn.metrics import classification_report, accuracy_score, confusion_matrix
 import matplotlib.pyplot as plt
 import numpy as np
-
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
+from sklearn.naive_bayes import GaussianNB
+from sklearn.preprocessing import LabelEncoder
+import seaborn as sns
+from sklearn.ensemble import RandomForestClassifier
 # --- Load the Data ---
 try:
     # Load the RT_IOT2022 dataset
     data = pd.read_csv("RT_IOT2022_transformed.csv")
-    print("Successfully loaded RT_IOT2022_shuffled_temp.csv")
-    #print("\nOriginal Data Head:")
-    #print(data.head())
-    #print("\nData Info:")
-    #data.info()
+    print("\nData Info:")
+    data.info()
     print(f"\nData Shape: {data.shape}")
 
 except FileNotFoundError:
     print("Error: 'RT_IOT2022_shuffled_temp.csv' not found.")
     print("Please make sure the file is in the correct directory.")
     exit()
-
+data=data.sample(n=10000, random_state=42)  # Sample 10,000 rows for faster processing  
 # Handle missing values by imputing or dropping them
 if data.isnull().values.any():
     print("Missing values detected in the dataset.")
     print("Imputing missing values with the mean for numeric columns.")
     data.fillna(data.mean(numeric_only=True), inplace=True)
     print("Missing values have been handled.")
-#data=data.sample(n=10000, random_state=42)  # Sample 10,000 rows for faster processing
-# --- Preprocessing Steps ---
 
-# 1. Separate features (X) and target variable (y)
-# Identify features and target. Assuming 'Attack' is the target.  Adjust as needed.
 features = [col for col in data.columns if col != 'Attack_type']  # Use all columns except 'Attack'
 target = 'Attack_type'
 
@@ -53,24 +51,11 @@ print(X.head())
 print(f"\nTarget (y) shape: {y.shape}")
 print("Target Head:")
 print(y.head())
-
-# 2. Split the data into training and test sets (BEFORE scaling)
-# stratify=y ensures the proportion of attack types is similar in train and test sets.
+# Scale the dataset
+scaler = StandardScaler()
+df_scaled = pd.DataFrame(scaler.fit_transform(X), columns=X.columns)
+numerical_features = df_scaled.select_dtypes(include=['number']).columns
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
-
-# print("\n--- After Splitting ---")
-# print(f"X_train shape: {X_train.shape}")
-# print(f"X_test shape: {X_test.shape}")
-# print(f"y_train shape: {y_train.shape}")
-# print(f"y_test shape: {y_test.shape}")
-# print("\nProportion of classes in y_train:")
-# print(y_train.value_counts(normalize=True))
-# print("\nProportion of classes in y_test:")
-# print(y_test.value_counts(normalize=True))
-
-
-# 3. Normalize the FEATURES (X) using StandardScaler
-# Identify numeric columns for scaling
 numeric_X_train = X_train.select_dtypes(include=np.number)
 numeric_X_test = X_test.select_dtypes(include=np.number)
 
@@ -81,45 +66,109 @@ if numeric_X_train.shape[1] == 0:
     exit()
 # Initialize the scaler
 scaler = StandardScaler()
-
-# Fit the scaler ONLY on the training data
 scaler.fit(numeric_X_train)
-
 # Transform both the training and testing data using the fitted scaler
 X_train_scaled = scaler.transform(numeric_X_train)
 X_test_scaled = scaler.transform(numeric_X_test)
-
 # Create DataFrames from the scaled NumPy arrays
 X_train_scaled_df = pd.DataFrame(X_train_scaled, columns=numeric_X_train.columns, index=numeric_X_train.index)
 X_test_scaled_df = pd.DataFrame(X_test_scaled, columns=numeric_X_test.columns, index=numeric_X_test.index)
-
 # Combine scaled numeric data with non-numeric data
 X_train_combined = pd.concat([X_train_scaled_df, X_train.drop(columns=numeric_X_train.columns, errors='ignore')], axis=1)
 X_test_combined = pd.concat([X_test_scaled_df, X_test.drop(columns=numeric_X_test.columns, errors='ignore')], axis=1)
+#k means
+k_values = [5, 10, 20]
+for k in k_values:
+    kmeans = KMeans(n_clusters=k, random_state=0, n_init=10)
+    kmeans.fit(df_scaled[numerical_features])
+    cluster_labels = kmeans.labels_
+    df_scaled[f'cluster_{k}'] = cluster_labels
 
+print(df_scaled.head())
+# Select two principal components or relevant numerical features
+x_axis = 'fwd_pkts_tot'
+y_axis = 'bwd_pkts_tot'
+# Create scatter plots for each k value
+k_values = [5, 10, 20]
+fig, axes = plt.subplots(1, 3, figsize=(18, 6))  # Adjust figure size
+for i, k in enumerate(k_values):
+    ax = axes[i]
+    ax.scatter(df_scaled[x_axis], df_scaled[y_axis], c=df_scaled[f'cluster_{k}'], cmap='viridis')
+    ax.set_title(f'K-means Clustering (k={k})')
+    ax.set_xlabel(x_axis)
+    ax.set_ylabel(y_axis)
 
-# X_train_scaled and X_test_scaled are now NumPy arrays
-# print("\n--- After Scaling ---")
-# print("Scaled Training Data (X_train_scaled) Head (first 5 rows as numpy array):")
-# print(X_train_scaled[:5])
-# print("\nMean of scaled training features (should be close to 0):")
-# print(X_train_scaled.mean(axis=0))
-# print("\nStandard Deviation of scaled training features (should be close to 1):")
-# print(X_train_scaled.std(axis=0))
+plt.tight_layout()
+plt.show()
+print("K-Means clustering completed and summary statistics generated.")
+#NAIVE BAYES
+model = GaussianNB()
 
-# print("\nScaled Testing Data (X_test_scaled) Head (first 5 rows as numpy array):")
-# print(X_test_scaled[:5])
+# 2. Train the model
+model.fit(X_train, y_train)
+print("\nNaive Bayes model trained.")
 
-# Now you have:
-# X_train_scaled: Scaled features for training the model
-# X_test_scaled: Scaled features for testing the model
-# y_train: Target variable for training
-# y_test: Target variable for testing
+# 3. Make predictions
+y_pred = model.predict(X_test)
+print("Predictions made on test set.")
 
-# --- Ready for Model Training ---
-# print("\nData preprocessing complete. Ready for model training using:")
-# print("X_train_combined, y_train, X_test_combined, y_test")
+# 4. Evaluate the model
+accuracy = accuracy_score(y_test, y_pred)
+print(f"\nModel Accuracy: {accuracy:.4f}")
 
+# Update classification_report to handle undefined metrics
+report = classification_report(y_test, y_pred, zero_division=0)
+print("\nClassification Report:")
+print(report)
+
+# --- Plotting the Confusion Matrix ---
+from sklearn.metrics import ConfusionMatrixDisplay
+
+# Plot the confusion matrix
+disp = ConfusionMatrixDisplay.from_predictions(y_test, y_pred, cmap='Blues')
+plt.title("Confusion Matrix")
+
+# Rotate x-axis labels to prevent overlap
+plt.xticks(rotation=45, ha='right')  # or rotation=90 for vertical
+plt.tight_layout()  # Adjust layout to prevent clipping
+plt.xticks(rotation=90)
+plt.show()
+
+# --- Plotting Accuracy ---
+plt.figure(figsize=(8, 6))
+plt.bar(['Accuracy'], [accuracy], color='lightgreen')
+plt.ylim(0, 1)
+plt.title("Naive Bayes Model Accuracy")
+plt.ylabel("Accuracy")
+plt.show()
+
+# --- Random Forest Model ---
+model = RandomForestClassifier(n_estimators=100, random_state=42)
+
+# 2. Train the model
+model.fit(X_train, y_train)
+print("\nRandom Forest model trained.")
+
+# 3. Make predictions
+y_pred = model.predict(X_test)
+print("Predictions made on test set.")
+
+# 4. Evaluate the model
+accuracy = accuracy_score(y_test, y_pred)
+print(f"\nModel Accuracy: {accuracy:.4f}")
+
+report = classification_report(y_test, y_pred)
+print("\nClassification Report:")
+print(report)
+
+# 5. Plot the Confusion Matrix
+cm = confusion_matrix(y_test, y_pred)
+plt.figure(figsize=(10, 8))
+sns.heatmap(cm, annot=True, fmt="d", cmap="Blues")
+plt.title("Confusion Matrix - Random Forest")
+plt.xlabel("Predicted Labels")
+plt.ylabel("True Labels")
+plt.show()
 # --- Step 4: Train the KNN Model ---
 # Initialize the KNN classifier with k=3 (a common starting point)
 knn = KNeighborsClassifier(n_neighbors=3)
@@ -142,13 +191,13 @@ accuracy = accuracy_score(y_test, y_pred)
 print(f"\nModel Accuracy: {accuracy:.4f}")
 
 # Generate a detailed classification report
-report = classification_report(y_test, y_pred)
+report = classification_report(y_test, y_pred, zero_division=0)
 print("\nClassification Report:")
 print(report)
 
 # Optional: Display a few actual vs predicted values for comparison
 print("\nSample of Actual vs. Predicted values:")
-comparison_df = pd.DataFrame({'Actual': y_test, 'Predicted': y_pred})
+comparison_df = pd.DataFrame({'Actual': y_test.values, 'Predicted': y_pred})
 print(comparison_df.head(10).to_string())
 
 # --- Step 6: Visualizing K vs. Accuracy ---
@@ -182,11 +231,10 @@ best_k = k_range[best_k_index]
 best_accuracy = accuracy_scores[best_k_index]
 
 print(f"\nBest accuracy found: {best_accuracy:.4f} at k={best_k}")
-
-# Plotting the results
+# knn graph Plotting the results
 plt.figure(figsize=(10, 6))
-plt.plot(k_range, accuracy_scores, color='blue', linestyle='dashed', marker='o',
-         markerfacecolor='red', markersize=8)
+plt.plot(k_range, accuracy_scores, color='green', linestyle='solid', marker='^',
+         markerfacecolor='blue', markersize=8)
 plt.title('Accuracy vs. K Value for KNN Classifier')
 plt.xlabel('Number of Neighbors (K)')
 plt.ylabel('Accuracy')
@@ -195,5 +243,45 @@ plt.annotate(f'Best k={best_k}\nAccuracy={best_accuracy:.4f}',
              xytext=(best_k + 1, best_accuracy - 0.01),
              arrowprops=dict(facecolor='black', shrink=0.05))
 plt.xticks(k_range)
+plt.grid(True)
+plt.show()
+
+# Define the metrics for each model
+acc = accuracy_score(y_test, knn.predict(X_test_combined))
+acc_nb = accuracy_score(y_test, model.predict(X_test))  # Naive Bayes accuracy
+acc_rf = accuracy_score(y_test, model.predict(X_test))  # Random Forest accuracy
+
+precision = classification_report(y_test, knn.predict(X_test_combined), output_dict=True, zero_division=0)['weighted avg']['precision']
+precision_nb = classification_report(y_test, model.predict(X_test), output_dict=True, zero_division=0)['weighted avg']['precision']
+precision_rf = classification_report(y_test, model.predict(X_test), output_dict=True, zero_division=0)['weighted avg']['precision']
+
+recall = classification_report(y_test, knn.predict(X_test_combined), output_dict=True, zero_division=0)['weighted avg']['recall']
+recall_nb = classification_report(y_test, model.predict(X_test), output_dict=True, zero_division=0)['weighted avg']['recall']
+recall_rf = classification_report(y_test, model.predict(X_test), output_dict=True, zero_division=0)['weighted avg']['recall']
+
+f1 = classification_report(y_test, knn.predict(X_test_combined), output_dict=True, zero_division=0)['weighted avg']['f1-score']
+f1_nb = classification_report(y_test, model.predict(X_test), output_dict=True, zero_division=0)['weighted avg']['f1-score']
+f1_rf = classification_report(y_test, model.predict(X_test), output_dict=True, zero_division=0)['weighted avg']['f1-score']
+
+#compare the results of KNN, Naive Bayes, and Random Forest
+# ---------------- Plots ----------------
+models = ['KNN', 'Naive Bayes', 'Random Forest']
+accuracy = [acc, acc_nb, acc_rf]
+precision = [precision, precision_nb, precision_rf]
+recall = [recall, recall_nb, recall_rf]
+f1 = [f1, f1_nb, f1_rf]
+
+x = range(len(models))
+plt.figure(figsize=(12, 6))
+plt.plot(x, accuracy, label='Accuracy', marker='o')
+plt.plot(x, precision, label='Precision', marker='s')
+plt.plot(x, recall, label='Recall', marker='^')
+plt.plot(x, f1, label='F1 Score', marker='x')
+plt.xticks(x, models)
+plt.title("Model Comparison on Classification Metrics")
+plt.xlabel("Models")
+plt.ylabel("Score")
+plt.ylim(0.7, 1.0)
+plt.legend()
 plt.grid(True)
 plt.show()
