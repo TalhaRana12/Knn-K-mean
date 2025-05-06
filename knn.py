@@ -11,6 +11,8 @@ from sklearn.naive_bayes import GaussianNB
 from sklearn.preprocessing import LabelEncoder
 import seaborn as sns
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.utils.multiclass import unique_labels
+
 # --- Load the Data ---
 try:
     # Load the RT_IOT2022 dataset
@@ -45,12 +47,7 @@ if target not in data.columns:
 X = data[features]
 y = data[target]
 
-print(f"\nFeatures (X) shape: {X.shape}")
-print("Features Head:")
-print(X.head())
-print(f"\nTarget (y) shape: {y.shape}")
-print("Target Head:")
-print(y.head())
+
 # Scale the dataset
 scaler = StandardScaler()
 df_scaled = pd.DataFrame(scaler.fit_transform(X), columns=X.columns)
@@ -116,8 +113,18 @@ print("Predictions made on test set.")
 accuracy = accuracy_score(y_test, y_pred)
 print(f"\nModel Accuracy: {accuracy:.4f}")
 
-# Update classification_report to handle undefined metrics
-report = classification_report(y_test, y_pred, zero_division=0)
+# Filter out labels with no true samples
+def filter_labels_with_no_true_samples(y_true, y_pred):
+    labels = unique_labels(y_true, y_pred)
+    true_label_counts = {label: (y_true == label).sum() for label in labels}
+    valid_labels = [label for label, count in true_label_counts.items() if count > 0]
+    return valid_labels
+
+# Get valid labels
+valid_labels = filter_labels_with_no_true_samples(y_test, y_pred)
+
+# Update classification_report and other metrics to use valid labels
+report = classification_report(y_test, y_pred, labels=valid_labels, zero_division=0)
 print("\nClassification Report:")
 print(report)
 
